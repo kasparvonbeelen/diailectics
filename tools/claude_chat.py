@@ -108,6 +108,10 @@ def _make_client() -> anthropic.Anthropic:
 
 
 DEFAULT_MODEL = "claude-opus-5"
+# Persona responses are meant to be one short paragraph (see OUTPUT_FORMAT_INSTRUCTIONS) -
+# this is a generous backstop, not a target. select_important_passages() needs more room
+# since it emits several passage blocks, so it keeps its own higher default.
+PERSONA_MAX_TOKENS = 1024
 DEFAULT_RESEARCH_QUESTION = (
     "Does this passage draw on Gamson & Modigliani's 'Runaway' interpretive package "
     "(nuclear technology as a force that has slipped, or is at constant risk of "
@@ -155,26 +159,29 @@ TASK_LINES = {
 
 OUTPUT_FORMAT_INSTRUCTIONS = """
 OUTPUT FORMAT (follow exactly - no HTML, no Markdown, no other tags):
-Write your response as plain text using only these tags, never nested:
-- <point>...</point> wraps one discrete argument, observation, or step of your reasoning.
-- <quote>...</quote> wraps an exact, verbatim excerpt from the document text (original
-  language), offered as evidence.
+Keep your entire response to about one paragraph - this is a compact annotation
+aid, not an essay. Do not pad length; brevity is part of the task. Use only these
+tags, never nested:
+- <point>...</point> - exactly one. A single paragraph (roughly 2-4 sentences)
+  carrying your entire argument.
+- <quote>...</quote> - at most one, and optional: include it only if a short
+  verbatim excerpt from the document text (original language) meaningfully
+  strengthens your point.
 - <stance>yes</stance> or <stance>no</stance> - exactly one. This is a structured data
   field for the interface (rendered as a badge), not a recommendation to the
   annotator: state how your own reasoning above would classify this passage on the
   Runaway frame. It does not override any rule above about not telling the annotator
   what to conclude - it labels your argument, it does not instruct them.
-- <conclusion>...</conclusion> wraps exactly one closing block, at the end of your
-  response, containing whatever your role's rules above require as a closing
-  statement (a final counter-claim, a confirm/tension statement, a proposed
-  adjustment, or a stated tension - never a verdict you have been told is not yours
-  to give).
-Use as many <point> and <quote> tags as needed, in the order they occur in your
-reasoning, followed by exactly one <stance> tag and exactly one <conclusion> tag,
-in that order. No text outside these tags.
+- <conclusion>...</conclusion> - exactly one, a single sentence, containing
+  whatever your role's rules above require as a closing statement (a final
+  counter-claim, a confirm/tension statement, a proposed adjustment, or a stated
+  tension - never a verdict you have been told is not yours to give).
+Order: one <point>, then optionally one <quote>, then exactly one <stance> tag,
+then exactly one <conclusion> tag. No text outside these tags.
 
 If the annotator replies to your response, stay in this same persona role (do not
-become a generic assistant) and answer using this same tag format.
+become a generic assistant) and answer using this same tag format - still about
+one paragraph, not a rebuttal essay.
 """.strip()
 
 _TAG_RE = re.compile(r"<(point|quote|stance|conclusion)>(.*?)</\1>", re.DOTALL | re.IGNORECASE)
@@ -411,7 +418,7 @@ class PersonaConversation:
     def reply_count(self) -> int:
         return len(self.history) - 1
 
-    def reply(self, user_text: str, max_tokens: int = 4096) -> str:
+    def reply(self, user_text: str, max_tokens: int = PERSONA_MAX_TOKENS) -> str:
         """Send the annotator's reply; returns the persona's updated raw_text."""
         self.messages = self.messages + [
             {"role": "assistant", "content": self.raw_text},
@@ -441,7 +448,7 @@ def start_persona_conversation(
     model: str,
     research_question: str = DEFAULT_RESEARCH_QUESTION,
     annotation_text: str = None,
-    max_tokens: int = 4096,
+    max_tokens: int = PERSONA_MAX_TOKENS,
 ) -> PersonaConversation:
     """One stateless persona API call, wrapped so it can be replied to later."""
     system, user = build_messages(
@@ -695,7 +702,7 @@ class ChatBackend:
         contains_runaway: bool,
         research_question: str = DEFAULT_RESEARCH_QUESTION,
         model: str = None,
-        max_tokens: int = 4096,
+        max_tokens: int = PERSONA_MAX_TOKENS,
     ) -> dict:
         """Single passage, single persona, caller-supplied yes/no annotation.
         The returned "conversation" can be used to send a reply (see
