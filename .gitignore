@@ -1,0 +1,14 @@
+# Secrets - never commit these
+api_key.json
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

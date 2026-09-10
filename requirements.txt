@@ -1,0 +1,8 @@
+anthropic
+ipywidgets
+beautifulsoup4
+python-dotenv
+
+# Optional - only needed if you want call tracing (tools/claude_chat.py degrades
+# to a no-op decorator if this isn't installed, so it's safe to skip):
+# langsmith

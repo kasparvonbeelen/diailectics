@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Annotator Instructions — The Runaway Package</title>
+<style>
+  :root {
+    --paper: #EEEBE3;
+    --paper-raised: #F7F5EF;
+    --ink: #24261F;
+    --ink-soft: #5A5C4F;
+    --rule: #C9C4B4;
+    --amber: #9C6B2E;
+    --devil: #8B3A3A;
+    --sycophant: #4A7A6B;
+    --hegel: #3D5A80;
+    --adorno: #6B4E8E;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --serif: 'Lora', Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    margin: 0;
+    padding: 40px 24px 80px;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header.masthead {
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 14px;
+    margin-bottom: 28px;
+  }
+  header.masthead .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 6px;
+  }
+  header.masthead h1 {
+    font-size: 26px;
+    margin: 0 0 6px;
+    font-weight: 600;
+  }
+  header.masthead .cite {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .sourcing-note {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+    border: 1px dashed var(--rule);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 18px 0 28px;
+  }
+
+  h2 {
+    font-size: 19px;
+    margin: 36px 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-size: 15px;
+    margin: 24px 0 10px;
+    color: var(--ink);
+  }
+
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  strong { color: var(--ink); }
+  em { color: var(--ink-soft); }
+
+  .callout {
+    background: var(--paper-raised);
+    border-left: 4px solid var(--amber);
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 16px 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    background: var(--paper-raised);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 14px 0 20px;
+  }
+  th, td {
+    border-bottom: 1px solid var(--rule);
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--ink);
+    color: var(--paper-raised);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  .example {
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-left: 5px solid var(--hegel);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 16px 0 22px;
+  }
+  .example.negative { border-left-color: var(--devil); }
+  .example.ambiguous { border-left-color: var(--adorno); }
+  .example.calibration { border-left-color: var(--sycophant); }
+  .example h4 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 10px;
+  }
+  .example .article-id {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+  blockquote {
+    margin: 10px 0;
+    padding: 10px 16px;
+    border-left: 3px solid var(--rule);
+    background: #fff;
+    border-radius: 4px;
+  }
+  blockquote .fr { font-style: italic; }
+  blockquote .en { color: var(--ink-soft); font-size: 13.5px; margin-top: 6px; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 32px 0;
+  }
+
+  .checklist {
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px 22px;
+  }
+  .checklist ol { margin-bottom: 0; }
+
+  .final-note {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    margin-top: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Annotator Training · Frame Analysis</div>
+    <h1>Identifying the "Runaway" Interpretive Package</h1>
+    <div class="cite">Gamson &amp; Modigliani (1989). <em>Media Discourse and Public Opinion on Nuclear Power: A Constructionist Approach.</em> American Journal of Sociology 95(1), 1–37.</div>
+  </header>
+
+  <p>These instructions assume no prior familiarity with Gamson &amp; Modigliani's framework. Testing for this round focuses <strong>only on the Runaway package</strong> — you do not need to learn to distinguish it from the other six packages (Progress, Energy Independence, Devil's Bargain, Public Accountability, Not Cost Effective, Soft Paths) to complete this task, though a short comparison with the closest neighbor (Devil's Bargain) is included, since the two are easy to conflate.</p>
+
+  <div class="sourcing-note">Note on sourcing: page citations below refer to the original AJS pagination (pp. 1–37) as reproduced in the uploaded PDF, so they can be checked directly against the source.</div>
+
+  <h2>1. What is an "interpretive package"?</h2>
+  <p>Gamson &amp; Modigliani argue that public discourse on an issue like nuclear power is organized around a small number of competing <strong>interpretive packages</strong> — bundles of ideas that give the raw facts of an event a coherent meaning. A package has:</p>
+  <ul>
+    <li>a <strong>core frame</strong>: a central organizing idea that answers "what is this issue really about?"</li>
+    <li>a set of <strong>framing devices</strong>: the surface features of the text that signal the package (how it's said)</li>
+    <li>a set of <strong>reasoning devices</strong>: the underlying justificatory logic of the package (why it follows)</li>
+  </ul>
+  <p>The same event (an accident, a safety report, a public statement) can be — and in this corpus routinely is — narrated through entirely different packages depending on which framing and reasoning devices a text draws on.</p>
+
+  <h2>2. The Runaway package: core frame</h2>
+  <p>Runaway's core idea is that <strong>nuclear technology is a force that has slipped, or is at constant risk of slipping, outside human control</strong> — technically, institutionally, or both (p. 30, describing the question the discourse keeps returning to: "is this technology under control?").</p>
+
+  <div class="callout">
+    <strong>Important nuance:</strong> Runaway is <em>not</em> an advocacy package. Gamson &amp; Modigliani are explicit that its stance is <strong>fatalistic and resigned rather than oppositional</strong> (p. 16): the message is closer to "grin and bear it" than "no nukes." It is expressed frequently through gallows humor about "nasty nuclear surprises," and — unlike every other package they identify — Runaway has <strong>no organized sponsor</strong> actively promoting it (p. 16). A passage arguing nuclear power should be <em>stopped</em>, or that <em>someone is to blame</em>, is more likely Public Accountability or Soft Paths, not Runaway. Runaway's characteristic move is closer to "we're already committed to this and can't undo it, whatever the risk" — resignation, not a call to action.
+  </div>
+
+  <p>The package's own summary statement (paraphrased across pronuclear and antinuclear sources by the authors, p. 16) runs roughly: humanity did not fully understand what it was getting into with nuclear power; having unleashed it, we can no longer force it back under control; nuclear energy is not simply one energy source among others but something more elemental, defying ordinary cost-benefit analysis, because its harms are invisible and may not appear until much later.</p>
+
+  <p>Gamson &amp; Modigliani's content-coding of actual media discourse (pp. 22–29) found Runaway became the dominant package across television, newsmagazines, and cartoons in the wake of Three Mile Island (1979) — overtaking the previously dominant Progress package — and remained dominant after Chernobyl (1986), where it was joined by a partial (mostly defensive) rebound of Progress.</p>
+
+  <h3>The two dominant sub-ideas (useful annotation target)</h3>
+  <p>Across the coded material, roughly three-quarters of all Runaway-coded utterances fall into just two recurring ideas (p. 24) — a more precise, checkable target than the core frame alone:</p>
+  <ul>
+    <li><strong>(a) The overconfidence theme:</strong> officials or experts in charge of the technology believe they have it under control, but demonstrably do not.</li>
+    <li><strong>(b) The hidden-danger theme:</strong> radiation (or the risk more broadly) is invisible and its effects delayed — harm may not appear until much later, so present reassurance cannot be trusted.</li>
+  </ul>
+
+  <h3>Distinguishing Runaway from its closest neighbor: Devil's Bargain</h3>
+  <p>Devil's Bargain is a related, easily-confused package that explicitly <strong>conflates pronuclear benefit claims with Runaway fear in the same passage</strong> (pp. 20, 25) — e.g., acknowledging real benefits (cheap power, energy security) alongside an inevitable, unspecified future price. It is genuinely <strong>ambivalent</strong> (both for and against), whereas Runaway is fatalistic without necessarily weighing benefits at all. If a passage explicitly weighs a stated benefit against the feared cost, lean Devil's Bargain; if it simply asserts the technology is beyond control with no benefit-weighing, lean Runaway. Log ambiguous cases as both.</p>
+
+  <h2>3. Framing devices: what to look for in the text</h2>
+  <p>Framing devices are the manifest surface signals — the concrete words, images, and examples a text uses.</p>
+  <table>
+    <tr><th>Device</th><th>What it is</th><th>Typical Runaway instance</th></tr>
+    <tr>
+      <td><strong>Metaphor</strong></td>
+      <td>A comparison that imports meaning from one domain into another</td>
+      <td>Nuclear power as a <strong>genie that cannot be put back in the bottle</strong>; as <strong>Frankenstein's monster that might turn on its creator</strong>; as a <strong>time bomb waiting to explode</strong> (p. 16); the accident site as a <strong>gothic castle</strong> overlooking "a community of simple folk," explicitly compared to Dr. Frankenstein's castle in Transylvania (Nimmo &amp; Combs, cited p. 22)</td>
+    </tr>
+    <tr>
+      <td><strong>Catchphrase</strong></td>
+      <td>A short, resonant, repeatable phrase</td>
+      <td>"<strong>runaway</strong> reactor," "technology <strong>out of control</strong>," "<strong>meltdown</strong>"; the biblical idiom "<strong>he who sows the wind, reaps the whirlwind</strong>" (p. 16)</td>
+    </tr>
+    <tr>
+      <td><strong>Exemplar</strong></td>
+      <td>A specific past case used to stand in for the general danger</td>
+      <td>Three Mile Island and Chernobyl are the two paradigm exemplars; the 1966 Fermi reactor partial meltdown is an earlier, less-known exemplar the authors use to show how thoroughly Progress dominated before TMI (pp. 13–14)</td>
+    </tr>
+    <tr>
+      <td><strong>Depiction</strong></td>
+      <td>A characterization of the actors involved</td>
+      <td>Overconfident "nucleocrats" who believe they have the technology under control but demonstrably do not (the Don Wright cartoon, p. 27); officials shown as confused rather than malicious — contrast with Public Accountability, which depicts officials as deliberately dishonest</td>
+    </tr>
+    <tr>
+      <td><strong>Visual image</strong></td>
+      <td>A recurring visual motif</td>
+      <td>The <strong>cooling-tower silhouette</strong>, used as visual reinforcement for Runaway's gothic-romance storyline (p. 22); on television, a <strong>pulsating red dot or streak</strong> representing invisible, spreading radiation (p. 23)</td>
+    </tr>
+  </table>
+
+  <h2>4. Reasoning devices: the underlying justificatory logic</h2>
+  <p>Reasoning devices are the latent logical structure — the argument the framing devices are, in effect, evidence for.</p>
+  <table>
+    <tr><th>Device</th><th>Question it answers</th><th>Runaway's answer</th></tr>
+    <tr>
+      <td><strong>Roots</strong></td>
+      <td>What causes the problem?</td>
+      <td>Humans did not fully understand what they were creating; having unleashed the technology, they can no longer force it back under control — the root cause is not this specific malfunction but a permanent mismatch between the technology's power and human capacity to master it</td>
+    </tr>
+    <tr>
+      <td><strong>Consequences</strong></td>
+      <td>What follows if nothing changes?</td>
+      <td>An unknown "price" will eventually have to be paid; because effects (especially radiation) are invisible and delayed, harm may not be recognized until long after exposure — distinct from an argument for stopping the technology; closer to inevitable, deferred cost</td>
+    </tr>
+    <tr>
+      <td><strong>Appeal to principle</strong></td>
+      <td>What value justifies this reading?</td>
+      <td>Not usually an explicit call to precautionary action (closer to Public Accountability or Soft Paths) — Runaway's implicit appeal is closer to hubris/limits-of-mastery: humans have overreached in "tampering with the fundamental forces of nature," and consequences follow almost as a natural law ("he who sows the wind, reaps the whirlwind," p. 16)</td>
+    </tr>
+  </table>
+
+  <div class="callout">
+    <strong>Practical distinction for annotators:</strong> a framing device is something you can point to in the sentence (a word, an image, a named prior accident). A reasoning device is the inference a reader is meant to draw from that material — it may be stated explicitly, or only implied. Log both separately even when they co-occur in the same sentence.
+  </div>
+
+  <h2>5. Unit of annotation</h2>
+  <p>Annotate at the <strong>sentence or short passage level</strong>, not the whole article. A single article may contain passages belonging to different packages, and part of what this exercise tests is whether annotators and personas can represent <strong>co-occurring frames within one document</strong> rather than forcing a single article-level label.</p>
+  <p>For each passage, record:</p>
+  <ol>
+    <li>The framing device(s) present, with the exact phrase.</li>
+    <li>The reasoning device(s) it supports, even if only implied — state your inference explicitly.</li>
+    <li>Whether the passage is Runaway alone, Runaway alongside another package, or ambiguous.</li>
+  </ol>
+
+  <hr class="divider">
+
+  <h2>6. Worked examples from the corpus</h2>
+  <p>Drawn from the Swiss newspaper CSV (L'Express and Gazette de Lausanne, French-language, 1979–1986, Three Mile Island and Chernobyl coverage). Original French is given with an English gloss; check the original when annotating.</p>
+
+  <div class="example">
+    <h4>Example A — clear framing devices: catchphrase + depiction + exemplar</h4>
+    <div class="article-id">EXP-1979-04-02-a-i0295 · 2 April 1979 · on the TMI gas bubble</div>
+    <blockquote>
+      <div class="fr">"La résorption de la bulle... est la condition nécessaire au refroidissement du réacteur... laisse planer le risque d'une 'fusion des éléments combustibles et du cœur'."</div>
+      <div class="en">(The dissipation of the bubble... is the condition necessary for cooling the reactor... leaves hanging the risk of a "meltdown of the fuel elements and core.")</div>
+    </blockquote>
+    <ul>
+      <li><strong>Framing device — catchphrase:</strong> "fusion... du cœur" (meltdown) — the signature Runaway catchphrase, quoted with scare-quote emphasis in the original.</li>
+      <li><strong>Framing device — depiction:</strong> experts "speculate" on the bubble's composition and trajectory — depicts even the technical experts as uncertain, not in control.</li>
+      <li><strong>Reasoning device — consequences:</strong> the still-open evacuation question frames the situation's trajectory as not yet known or contained.</li>
+    </ul>
+  </div>
+
+  <div class="example">
+    <h4>Example B — gothic-castle depiction without the explicit metaphor word</h4>
+    <div class="article-id">EXP-1979-04-04-a-i0336 · 4 April 1979 · "Harrisburg: une ville désertée"</div>
+    <blockquote>
+      <div class="fr">"Les écoles ferment, les rues d'Harrisburg sont désertes... Seule la banque connaît une affluence inhabituelle. Les clients se précipitent... pour retirer leur argent... en cas d'évacuation."</div>
+      <div class="en">(Schools close, Harrisburg's streets are deserted... Only the bank sees unusual activity, as customers rush to withdraw cash in case of evacuation.)</div>
+    </blockquote>
+    <ul>
+      <li><strong>Framing device — depiction:</strong> a population in flight, ordinary civic life suspended by an invisible threat — the "community of simple folk" imagery, even without explicit "Frankenstein" language.</li>
+      <li><strong>Framing device — visual image (caption):</strong> "De l'argent avant de partir" reinforces the flight motif.</li>
+      <li><strong>Reasoning device — root (implicit):</strong> the fear is treated as reasonable given unverifiable risk, not irrational panic (contrast Example D).</li>
+    </ul>
+  </div>
+
+  <div class="example calibration">
+    <h4>Example C — shares Runaway's root-cause logic, but the activist call-to-action pulls it elsewhere (calibration case)</h4>
+    <div class="article-id">EXP-1979-04-09-a-i0196 · 9 April 1979 · Helvétia Nostra statement on Creys-Malville</div>
+    <blockquote>
+      <div class="fr">"L'accident de Three Mile Island prouve de manière éclatante que la sécurité dans l'exploitation de centrales nucléaires ne peut pas être assurée... Genève pourrait être un jour rayée de la carte."</div>
+      <div class="en">(The Three Mile Island accident proves decisively that safety in the operation of nuclear plants cannot be assured... Geneva could one day be wiped off the map.)</div>
+    </blockquote>
+    <ul>
+      <li><strong>Framing device — exemplar:</strong> TMI invoked explicitly as generalizable proof.</li>
+      <li><strong>Reasoning device — root:</strong> echoes Runaway's root-cause logic (technology permanently exceeds human capacity to guarantee safety).</li>
+      <li><strong>Reasoning device — consequences:</strong> maximal, near-existential.</li>
+      <li><strong>Not a clean Runaway example, and that's the useful part:</strong> the statement closes with an explicit demand that the government act. Per §2, Runaway is characteristically fatalistic and resigned, not a call to action. Better coded as <strong>Public Accountability</strong> (or a Runaway/Public-Accountability mix) — the action-orientation is what tips the call. Log as mixed rather than pure Runaway.</li>
+    </ul>
+  </div>
+
+  <div class="example negative">
+    <h4>Example D — contrast case: same exemplar, explicitly not Runaway</h4>
+    <div class="article-id">EXP-1986-04-30-a-i0003 · 30 April 1986 · "Tabou," on Chernobyl</div>
+    <blockquote>
+      <div class="fr">"En 1979, à Harrisburg... on avait aussi redouté le pire. Or, l'accident n'avait fait aucune victime... la population suisse ne risque rien... Inutile donc de céder à la panique."</div>
+      <div class="en">(In 1979 at Harrisburg... the worst was also feared. Yet the accident caused no victims... the Swiss population risks nothing... No point giving in to panic.)</div>
+    </blockquote>
+    <ul>
+      <li>Invokes the same exemplar (TMI) as Example C but argues the <strong>opposite</strong>: fear is overstated, risks are bounded and manageable at a distance.</li>
+      <li>Closer to a <strong>Progress</strong>-package reasoning structure explicitly rebutting the Runaway root-cause claim.</li>
+      <li><strong>Annotation note:</strong> the presence of an exemplar alone is not sufficient to code Runaway — the same exemplar can be mobilized by competing packages toward opposite conclusions. Always check which reasoning device it's supporting.</li>
+    </ul>
+  </div>
+
+  <div class="example ambiguous">
+    <h4>Example E — genuinely ambiguous / mixed passage (for calibration discussion)</h4>
+    <div class="article-id">GDL-1979-04-04-a-i0001 · 4 April 1979 · Gazette de Lausanne editorial, "À quoi va servir Harrisburg?"</div>
+    <blockquote>
+      <div class="fr">"...il a donné tout à coup corps et apparente légitimité aux scénarios apocalyptiques imaginés par les adversaires de l'énergie atomique."</div>
+      <div class="en">(...it suddenly gave substance and apparent legitimacy to the apocalyptic scenarios imagined by opponents of atomic energy.)</div>
+    </blockquote>
+    <ul>
+      <li><strong>Names</strong> Runaway-style catastrophist reasoning explicitly — but attributes it to "adversaries," at arm's length; the editorial's own argument aligns more with Progress or Devil's Bargain.</li>
+      <li><strong>Annotation note:</strong> distinguish a passage that <strong>deploys</strong> Runaway devices in its own voice from one that <strong>reports on or characterizes</strong> the package as another actor's position. Log both, flag the distinction.</li>
+    </ul>
+  </div>
+
+  <hr class="divider">
+
+  <h2>7. Quick self-check before annotating</h2>
+  <div class="checklist">
+    <ol>
+      <li>Is there a framing device present (metaphor, catchphrase, exemplar, depiction, visual image)? Which one, exact wording?</li>
+      <li>What reasoning device does it serve — and is that reasoning stated or only implied?</li>
+      <li>Is the passage speaking <em>in</em> the Runaway package, or <em>about</em> it (reporting another actor's framing)?</li>
+      <li>Does this passage share the unit (sentence/paragraph) with a different package? If so, note both.</li>
+    </ol>
+  </div>
+  <p class="final-note">If you're unsure whether something counts as a framing device versus incidental description, log it anyway with a confidence note — divergence between annotators on borderline cases is itself data for the evaluation design, not a failure of the exercise.</p>
+
+</div>
+</body>
+</html>
