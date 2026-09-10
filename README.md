@@ -19,8 +19,10 @@ including their own yes/no stance on whether it carries the Runaway frame.
 - **Replies keep their history.** Reply to any persona and it answers in
   character; the earlier version isn't overwritten, so the thread shows the
   whole exchange.
-- **Add your own passages** for text the automatic selection skipped — they
-  join the same comments column.
+- **Comment on anything the selection skipped.** Every sentence of the
+  annotated article is listed for picking (the ones Claude chose are ticked);
+  pick one and it joins the same comments column and gets highlighted in the
+  article alongside the rest.
 - **Save** everything to a timestamped JSON file: each passage, its
   annotation, and every persona's full response history plus your replies.
 

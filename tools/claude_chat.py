@@ -164,36 +164,38 @@ TASK_LINES = {
 
 OUTPUT_FORMAT_INSTRUCTIONS = """
 OUTPUT FORMAT (follow exactly - no HTML, no Markdown, no other tags):
-Hard budget: 60 words total across every tag combined, excluding the quote if
-you include one. This is a compact annotation aid, not an essay - if you find
-yourself writing a second sentence for <point> or reaching for "and", "but
-also", or a semicolon to add another clause, cut it instead. One idea per
-sentence. Use only these tags, never nested:
+Budget: about 90 words across every tag combined, excluding the quote if you
+include one. Enough to make a real argument and show your reasoning, but this
+is still an annotation aid rather than an essay - don't pad, and don't restate
+the same point twice in different words. Use only these tags, never nested:
 - <summary>...</summary> - exactly one, first. One short sentence (max ~15
   words) that must be understandable entirely on its own, without anyone reading
   anything else you write: state your principal position on this passage in
   plain terms. This is what appears in a collapsed preview before your full
   response is opened, so it cannot assume the reader has any other context.
-- <point>...</point> - exactly one sentence, carrying your single strongest
-  argument (beyond what <summary> already said - do not just repeat it).
+  Keep this one short even though the rest has room.
+- <point>...</point> - exactly one, two or three sentences developing your
+  argument: what in the passage drives it, which schema device or theme it
+  turns on, and what someone reading the passage the other way would be
+  missing. Go beyond what <summary> already said rather than repeating it.
 - <quote>...</quote> - at most one, and optional: include it only if a short
   verbatim excerpt from the document text (original language) meaningfully
-  strengthens your point. Not counted against the 60-word budget.
+  strengthens your point. Not counted against the word budget.
 - <stance>yes</stance> or <stance>no</stance> - exactly one. This is a structured data
   field for the interface (rendered as a badge), not a recommendation to the
   annotator: state how your own reasoning above would classify this passage on the
   Runaway frame. It does not override any rule above about not telling the annotator
   what to conclude - it labels your argument, it does not instruct them.
-- <conclusion>...</conclusion> - exactly one short sentence, containing whatever
-  your role's rules above require as a closing statement (a final counter-claim,
-  a confirm/tension statement, a proposed adjustment, or a stated tension - never
-  a verdict you have been told is not yours to give).
+- <conclusion>...</conclusion> - exactly one, one or two sentences, containing
+  whatever your role's rules above require as a closing statement (a final
+  counter-claim, a confirm/tension statement, a proposed adjustment, or a
+  stated tension - never a verdict you have been told is not yours to give).
 Order: <summary>, then <point>, then optionally <quote>, then <stance>, then
 <conclusion>. No text outside these tags.
 
 If the annotator replies to your response, stay in this same persona role (do not
-become a generic assistant) and answer using this same tag format and the same
-60-word budget - still short, not a rebuttal essay.
+become a generic assistant), engage with what they actually said, and answer
+using this same tag format and the same ~110-word budget.
 """.strip()
 
 _OPEN_TAG_RE = re.compile(r"<(summary|point|quote|stance|conclusion)>", re.IGNORECASE)
@@ -804,6 +806,39 @@ def _passage_panel_html(idx: int, passage: dict) -> str:
   <div class="rw-panel-justification">{motivation_escaped}</div>
   {persona_items}
 </div>"""
+
+
+_SEGMENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def split_into_segments(article_text: str, min_chars: int = 30) -> list:
+    """Split an article into sentence-level segments the annotator can pick
+    from - the schema's own unit of annotation is "the sentence or short
+    passage level" (§5).
+
+    Each segment is returned as a *verbatim substring* of `article_text`
+    (only stripped at the edges), so a segment selected here can still be
+    located in the article and highlighted by render_article_marks_html().
+
+    Fragments shorter than `min_chars` are merged into the following one, so
+    an abbreviation like "M. Willy Perret-Gentil" doesn't become its own
+    two-character "sentence".
+    """
+    segments, buffer = [], ""
+    for part in _SEGMENT_SPLIT_RE.split(article_text):
+        part = part.strip()
+        if not part:
+            continue
+        buffer = f"{buffer} {part}" if buffer else part
+        if len(buffer) >= min_chars:
+            segments.append(buffer)
+            buffer = ""
+    if buffer:
+        if segments:
+            segments[-1] = f"{segments[-1]} {buffer}"
+        else:
+            segments.append(buffer)
+    return segments
 
 
 def render_article_marks_html(article_text: str, passages: list) -> str:

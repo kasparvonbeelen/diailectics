@@ -45,6 +45,7 @@ from tools.claude_chat import (
     render_conversation_thread,
     render_article_marks_html,
     serialize_passage,
+    split_into_segments,
 )
 
 IN_COLAB = "google.colab" in sys.modules
@@ -201,6 +202,20 @@ def _run_header_html(run_no: int, article_snippet: str, is_current: bool) -> str
     )
 
 
+def _segment_options(segments: list, annotated_quotes: list) -> list:
+    """(label, value) options for the sentence picker. Segments Claude already
+    annotated in this run are ticked, so what's left unticked is exactly the
+    text its selection step passed over - which is the point of picking one."""
+    options = []
+    for i, segment in enumerate(segments, start=1):
+        already = any(segment in quote or quote in segment for quote in annotated_quotes)
+        label = " ".join(segment.split())
+        if len(label) > 88:
+            label = label[:85] + "..."
+        options.append((f"{'✓' if already else '·'} {i:>2}. {label}", segment))
+    return options
+
+
 def _build_passage_card(label: str, passage: dict) -> widgets.VBox:
     """One comment card: label, consensus badge (yes/no/maybe) + motivation, a
     quote preview, and that passage's persona accordion. The same card is used
@@ -263,13 +278,16 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
     show_raw_checkbox = widgets.Checkbox(value=False, description="Show raw selection output")
     run_status_output = widgets.Output()
 
-    # --- custom-passage controls ---
-    custom_passage_box = widgets.Textarea(
-        value="",
-        placeholder="Paste or type a specific passage you want persona feedback on...",
-        description="Passage:",
-        layout=widgets.Layout(width="100%", height="100px"),
-        style={"description_width": "60px"},
+    # --- controls for commenting on a part of the annotated article ---
+    # Picked from the article's own sentences rather than typed: the point is
+    # to comment on text the selection step passed over, and retyping it would
+    # be busywork (and risks a quote that no longer matches the article).
+    segment_selector = widgets.SelectMultiple(
+        options=[],
+        description="Sentences:",
+        rows=8,
+        layout=widgets.Layout(width="100%"),
+        style={"description_width": "70px"},
     )
     custom_runaway_toggle = widgets.ToggleButtons(
         options=[("Yes — Runaway frame present", True), ("No — Runaway frame not present", False)],
@@ -303,15 +321,17 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
     save_status_html = widgets.HTML(value="")
 
     session_passages = []
-    passage_counter = [0]
-    custom_counter = [0]
     run_counter = [0]
     run_headers = []  # (run_no, article_snippet, header_widget) - see _run_header_html
+    current_article = [""]   # the article the left pane is currently showing
+    current_passages = []    # every passage highlighted in it, auto-selected or picked
 
     def add_card(label, passage, source):
         card = _build_passage_card(label, passage)
         comments_column.children = comments_column.children + (card,)
-        session_passages.append({"label": label, "source": source, "passage": passage})
+        session_passages.append(
+            {"label": label, "source": source, "run": run_counter[0], "passage": passage}
+        )
 
     def on_run_clicked(_):
         run_status_output.clear_output()
@@ -332,7 +352,9 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
                 model=model_box.value,
             )
             article_text = article_box.value.strip()
-            article_widget.value = render_article_marks_html(article_text, result["passages"])
+            current_article[0] = article_text
+            current_passages[:] = list(result["passages"])
+            article_widget.value = render_article_marks_html(article_text, current_passages)
             run_status_output.clear_output()
             n_found = len(result["passages"])
             if n_found:
@@ -340,37 +362,55 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
             else:
                 print(
                     "No passages selected - Claude didn't find anything in this text that engages "
-                    "the Runaway frame. You can still add a passage by hand below."
+                    "the Runaway frame. You can still pick a sentence yourself below."
                 )
             if show_raw_checkbox.value:
                 print("\n--- raw passage-selection output ---\n")
                 print(result["selection_raw"])
 
-            if n_found:
-                # Mark which run these cards belong to: re-running replaces the
-                # article on the left but keeps earlier cards (deleting them
-                # would throw away work), so each group is labelled instead.
-                run_counter[0] += 1
-                snippet = article_text if len(article_text) <= 90 else article_text[:87] + "..."
-                header = widgets.HTML(_run_header_html(run_counter[0], snippet, True))
-                run_headers.append((run_counter[0], snippet, header))
-                for run_no, run_snippet, run_header in run_headers[:-1]:
-                    run_header.value = _run_header_html(run_no, run_snippet, False)
-                comments_column.children = comments_column.children + (header,)
+            # Offer every sentence of this article for picking, ticking the ones
+            # Claude already covered so the gaps are obvious.
+            segment_selector.options = _segment_options(
+                split_into_segments(article_text), [p["quote"] for p in current_passages]
+            )
+            segment_selector.value = ()
 
-                for passage in result["passages"]:
-                    passage_counter[0] += 1
-                    add_card(f"Passage {passage_counter[0]}", passage, "article")
+            # Mark which run these cards belong to: re-running replaces the
+            # article on the left but keeps earlier cards (deleting them
+            # would throw away work), so each group is labelled instead.
+            run_counter[0] += 1
+            snippet = article_text if len(article_text) <= 90 else article_text[:87] + "..."
+            header = widgets.HTML(_run_header_html(run_counter[0], snippet, True))
+            run_headers.append((run_counter[0], snippet, header))
+            for run_no, run_snippet, run_header in run_headers[:-1]:
+                run_header.value = _run_header_html(run_no, run_snippet, False)
+            comments_column.children = comments_column.children + (header,)
+
+            # Numbered by position in the article view, so a card's "Passage N"
+            # is the same N as the [N] marker on the highlighted text.
+            for idx, passage in enumerate(result["passages"], start=1):
+                add_card(f"Passage {idx}", passage, "article")
 
     def on_custom_run_clicked(_):
-        text = custom_passage_box.value.strip()
-        if not text:
-            custom_status_html.value = "<i>Enter a passage first.</i>"
+        selected_segments = list(segment_selector.value)
+        if not selected_segments:
+            if not segment_selector.options:
+                custom_status_html.value = (
+                    "<i>Run \"Annotate article\" first - then its sentences appear here to pick from.</i>"
+                )
+            else:
+                custom_status_html.value = "<i>Select one or more sentences above first.</i>"
             return
         selected_personas = [key for key, box in custom_persona_checkboxes.items() if box.value]
         if not selected_personas:
             custom_status_html.value = "<i>Select at least one persona.</i>"
             return
+
+        # Keep the picked sentences in the order they appear in the article, so a
+        # multi-sentence selection reads as it does in the text.
+        selected_segments.sort(key=lambda s: current_article[0].find(s))
+        text = " ".join(selected_segments)
+
         custom_status_html.value = (
             f"<i>Calling Claude ({model_box.value}) for {len(selected_personas)} persona(s)...</i>"
         )
@@ -381,10 +421,20 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
             justification=custom_justification_box.value.strip(),
             model=model_box.value,
         )
-        custom_counter[0] += 1
-        label = f"Custom passage {custom_counter[0]}"
-        custom_status_html.value = f"<i>Done ({label}) - added to the comments column above.</i>"
-        add_card(label, passage, "custom")
+
+        # It came from the article, so highlight it there too - same numbering
+        # as the automatically selected passages.
+        current_passages.append(passage)
+        article_widget.value = render_article_marks_html(current_article[0], current_passages)
+        label = f"Passage {len(current_passages)} &middot; your selection"
+        custom_status_html.value = (
+            f"<i>Done - added as passage {len(current_passages)}, and highlighted in the article.</i>"
+        )
+        add_card(label, passage, "selected")
+        segment_selector.options = _segment_options(
+            split_into_segments(current_article[0]), [p["quote"] for p in current_passages]
+        )
+        segment_selector.value = ()
 
     def on_save_clicked(_):
         if not session_passages:
@@ -430,13 +480,15 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
         run_status_output,
         display_area,
         widgets.HTML(
-            "<h3 style=\"margin-bottom:2px;\">Add a custom passage</h3>"
-            "<p style=\"font-size:12.5px;color:#5A5C4F;margin-top:0;\">For text the automatic "
-            "selection above didn't flag as important - paste your own passage, pick which "
-            "persona(s) should respond, and give your own yes/no annotation. It's added to the "
-            "same comments column above, alongside the article's own passages.</p>"
+            "<h3 style=\"margin-bottom:2px;\">Comment on another part of the article</h3>"
+            "<p style=\"font-size:12.5px;color:#5A5C4F;margin-top:0;\">Every sentence of the "
+            "article you just annotated is listed below. Ones Claude already picked out are "
+            "marked <b>&#10003;</b>, so what's left is exactly what its selection step passed "
+            "over. Choose one (or several adjacent ones, with ctrl/cmd-click), say whether "
+            "<i>you</i> read it as Runaway, pick which personas should respond, and it joins the "
+            "same comments column above &mdash; and gets highlighted in the article too.</p>"
         ),
-        custom_passage_box,
+        segment_selector,
         custom_runaway_toggle,
         custom_justification_box,
         widgets.HTML("<b>Personas:</b>"),
