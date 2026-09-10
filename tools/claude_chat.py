@@ -679,6 +679,56 @@ def render_article_html(article_text: str, passages: list) -> str:
 </div>"""
 
 
+def _run_personas_on_passage(
+    client: anthropic.Anthropic,
+    personas: dict,
+    schema: str,
+    quote: str,
+    contains_runaway: bool,
+    justification: str,
+    persona_keys: list,
+    model: str,
+    research_question: str = DEFAULT_RESEARCH_QUESTION,
+    max_workers: int = 4,
+) -> dict:
+    """Run every persona in `persona_keys` against one (quote, contains_runaway)
+    pair concurrently. Returns a passage dict shaped exactly like one entry of
+    annotate_article()'s result["passages"] - used both there (for the passages
+    Claude's own selection step picked) and by ChatBackend.run_passage() (for a
+    passage the caller picks by hand)."""
+    annotation_text = (
+        ("Runaway frame PRESENT" if contains_runaway else "Runaway frame NOT PRESENT")
+        + (f" — {justification}" if justification else "")
+    )
+    conversations = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(
+                start_persona_conversation, client, personas, schema, quote,
+                persona_key, contains_runaway, model, research_question, annotation_text,
+            ): persona_key
+            for persona_key in persona_keys
+        }
+        for future in as_completed(futures):
+            conversations[futures[future]] = future.result()
+
+    persona_results = {}
+    for persona_key in persona_keys:
+        conversation = conversations[persona_key]
+        persona_results[persona_key] = {
+            "raw_text": conversation.raw_text,
+            "html": render_html(persona_key, conversation.raw_text),
+            "usage": conversation.usages[-1],
+            "conversation": conversation,
+        }
+    return {
+        "quote": quote,
+        "contains_runaway": contains_runaway,
+        "justification": justification,
+        "personas": persona_results,
+    }
+
+
 class ChatBackend:
     """Loads personas + schema once, then answers persona-annotation calls against Claude."""
 
@@ -745,37 +795,13 @@ class ChatBackend:
             self.client, self.schema, article_text, model, max_passages, research_question
         )
 
-        conversations = {}  # (passage_idx, persona_key) -> PersonaConversation
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {}
-            for p_idx, passage in enumerate(passages):
-                annotation_text = (
-                    ("Runaway frame PRESENT" if passage["contains_runaway"] else "Runaway frame NOT PRESENT")
-                    + (f" — {passage['justification']}" if passage["justification"] else "")
-                )
-                for persona_key in persona_keys:
-                    future = pool.submit(
-                        start_persona_conversation,
-                        self.client, self.personas, self.schema, passage["quote"],
-                        persona_key, passage["contains_runaway"], model,
-                        research_question, annotation_text,
-                    )
-                    futures[future] = (p_idx, persona_key)
-            for future in as_completed(futures):
-                conversations[futures[future]] = future.result()
-
-        results = []
-        for p_idx, passage in enumerate(passages):
-            persona_results = {}
-            for persona_key in persona_keys:
-                conversation = conversations[(p_idx, persona_key)]
-                persona_results[persona_key] = {
-                    "raw_text": conversation.raw_text,
-                    "html": render_html(persona_key, conversation.raw_text),
-                    "usage": conversation.usages[-1],
-                    "conversation": conversation,
-                }
-            results.append({**passage, "personas": persona_results})
+        results = [
+            _run_personas_on_passage(
+                self.client, self.personas, self.schema, p["quote"], p["contains_runaway"],
+                p["justification"], persona_keys, model, research_question, max_workers,
+            )
+            for p in passages
+        ]
 
         return {
             "passages": results,
@@ -784,3 +810,31 @@ class ChatBackend:
             "selection_usage": selection_usage,
             "model": model,
         }
+
+    @traceable(name="persona_runaway_custom_passage")
+    def run_passage(
+        self,
+        text: str,
+        personas: list = None,
+        contains_runaway: bool = True,
+        justification: str = "",
+        model: str = None,
+        research_question: str = DEFAULT_RESEARCH_QUESTION,
+        max_workers: int = 4,
+    ) -> dict:
+        """Run every requested persona (default: all four) against a passage
+        *you* pick - for text Claude's own selection step in annotate_article()
+        didn't flag as important, but you want persona commentary on anyway.
+
+        Returns a passage dict shaped exactly like one entry of
+        annotate_article()'s result["passages"], so it renders and replies the
+        same way (see build_passage_section() in interface.ipynb)."""
+        model = model or self.model
+        persona_keys = list(personas) if personas else list(PERSONA_KEYS)
+        unknown = set(persona_keys) - set(PERSONA_KEYS)
+        if unknown:
+            raise ValueError(f"Unknown persona(s) {sorted(unknown)}; choose from {PERSONA_KEYS}")
+        return _run_personas_on_passage(
+            self.client, self.personas, self.schema, text, contains_runaway,
+            justification, persona_keys, model, research_question, max_workers,
+        )
