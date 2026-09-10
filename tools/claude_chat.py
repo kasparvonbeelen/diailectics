@@ -184,7 +184,7 @@ become a generic assistant) and answer using this same tag format - still about
 one paragraph, not a rebuttal essay.
 """.strip()
 
-_TAG_RE = re.compile(r"<(point|quote|stance|conclusion)>(.*?)</\1>", re.DOTALL | re.IGNORECASE)
+_OPEN_TAG_RE = re.compile(r"<(point|quote|stance|conclusion)>", re.IGNORECASE)
 _MEMORY_BRACKET_RE = re.compile(r"\[MEMORY MODE ONLY:.*?\]", re.DOTALL | re.IGNORECASE)
 _STATELESS_BRACKET_RE = re.compile(r"\[STATELESS MODE ONLY:\s*(.*?)\]", re.DOTALL | re.IGNORECASE)
 _BLANK_LINES_RE = re.compile(r"\n{3,}")
@@ -252,8 +252,37 @@ def load_runaway_schema(html_path: Path = RUNAWAY_INSTRUCTIONS_PATH) -> str:
 
 
 def parse_tagged_output(raw_text: str):
-    """Return [(tag, content), ...] in document order."""
-    return [(m.group(1).lower(), m.group(2).strip()) for m in _TAG_RE.finditer(raw_text)]
+    """Return [(tag, content), ...] in document order.
+
+    Tolerant of a model that drifts from the exact format - this matters for
+    transparency: nothing the model actually wrote should silently vanish from
+    the rendered output just because a closing tag was missing. Handles three
+    cases a strict "well-formed pair" regex would drop: text before the first
+    recognized tag (kept as an implicit "point"), a tag whose closing tag never
+    arrives (its content runs to the next open tag, or to the end of the
+    string), and tags in any order.
+    """
+    opens = list(_OPEN_TAG_RE.finditer(raw_text))
+    if not opens:
+        return []
+
+    nodes = []
+    leading = raw_text[: opens[0].start()].strip()
+    if leading:
+        nodes.append(("point", leading))
+
+    for i, m in enumerate(opens):
+        tag = m.group(1).lower()
+        start = m.end()
+        end = opens[i + 1].start() if i + 1 < len(opens) else len(raw_text)
+        content = raw_text[start:end]
+        close_match = re.search(rf"</{tag}>", content, re.IGNORECASE)
+        if close_match:
+            content = content[: close_match.start()]
+        content = content.strip()
+        if content:
+            nodes.append((tag, content))
+    return nodes
 
 
 _SENTENCE_END_RE = re.compile(r"^(.*?[.!?])(\s|$)")
@@ -343,6 +372,65 @@ letter-spacing:0.05em;text-transform:uppercase;color:{INK_SOFT};margin-bottom:10
 </div>"""
 
 
+def render_conversation_thread(persona_key: str, conversation) -> str:
+    """Render a persona's *entire* exchange, transparently - the initial
+    response, then each (your reply -> the persona's updated response) round,
+    in order - instead of only the latest state. `conversation` is a
+    PersonaConversation (duck-typed here to dodge the forward reference)."""
+    meta = PERSONA_META[persona_key]
+    color, title = meta["color"], meta["title"]
+
+    blocks = [render_persona_body(conversation.history[0], color)]
+    for reply_text, updated_raw in zip(conversation.replies, conversation.history[1:]):
+        blocks.append(
+            f'<div style="margin:14px 0 10px;padding:10px 14px;background:#fff;'
+            f'border:1px dashed {RULE};border-radius:4px;font-size:12.5px;color:{INK_SOFT};">'
+            f'<b>You replied:</b> {html_lib.escape(reply_text)}</div>'
+        )
+        blocks.append(render_persona_body(updated_raw, color))
+    body = "\n".join(blocks)
+
+    return f"""<div style="border:1px solid {RULE};border-left:5px solid {color};
+border-radius:6px;padding:16px 20px;margin:16px 0;max-width:800px;
+font-family:Georgia,'Lora',serif;background:{PAPER_RAISED};color:{INK};">
+  <div style="font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;
+letter-spacing:0.05em;text-transform:uppercase;color:{INK_SOFT};margin-bottom:10px;">
+    {html_lib.escape(title)}
+  </div>
+  {body}
+</div>"""
+
+
+def serialize_passage(passage: dict) -> dict:
+    """JSON-safe snapshot of one passage: the quote, the provisional annotation,
+    and - for every persona - its complete response history and the replies
+    that produced each update. This is the full transparent record (every
+    insertion and edit), not just the current state, and is what
+    ChatBackend save-to-file flows in interface.ipynb write out."""
+    serialized_personas = {}
+    for key, pdata in passage["personas"].items():
+        conversation = pdata.get("conversation")
+        if conversation is not None:
+            response_history = list(conversation.history)
+            replies = list(conversation.replies)
+            final_raw = conversation.raw_text
+        else:  # no live conversation object (e.g. reloaded from a save) - just the one response
+            response_history = [pdata["raw_text"]]
+            replies = []
+            final_raw = pdata["raw_text"]
+        serialized_personas[key] = {
+            "response_history": response_history,
+            "replies": replies,
+            "final_stance": extract_stance(final_raw),
+        }
+    return {
+        "quote": passage["quote"],
+        "contains_runaway": passage["contains_runaway"],
+        "justification": passage.get("justification", ""),
+        "personas": serialized_personas,
+    }
+
+
 def build_messages(
     personas: dict,
     schema: str,
@@ -412,6 +500,7 @@ class PersonaConversation:
         self.persona_key = persona_key
         self.raw_text = raw_text
         self.history = [raw_text]  # every response so far, oldest first
+        self.replies = []  # every annotator reply so far, oldest first - replies[i] produced history[i+1]
         self.usages = [usage]
 
     @property
@@ -433,6 +522,7 @@ class PersonaConversation:
         )
         raw_text = "".join(block.text for block in response.content if block.type == "text")
         self.raw_text = raw_text
+        self.replies.append(user_text)
         self.history.append(raw_text)
         self.usages.append(response.usage)
         return raw_text
