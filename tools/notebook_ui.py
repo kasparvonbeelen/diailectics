@@ -34,7 +34,6 @@ from getpass import getpass
 from pathlib import Path
 
 import ipywidgets as widgets
-from IPython.display import display, HTML
 
 from tools.claude_chat import (
     PERSONA_META,
@@ -177,6 +176,31 @@ def _build_persona_accordion(passage: dict) -> widgets.Accordion:
     return accordion
 
 
+def _run_header_html(run_no: int, article_snippet: str, is_current: bool) -> str:
+    """Group header marking which article run a batch of cards came from.
+
+    Only the most recent run's article is the one rendered on the left, so
+    cards from an earlier run would otherwise sit next to text they don't
+    refer to. Nothing is deleted when you re-run (that would throw away work);
+    the older group is labelled instead."""
+    note = (
+        "shown on the left"
+        if is_current
+        else "superseded &mdash; not the article now shown on the left"
+    )
+    background = "#EDEAE2" if is_current else "#F7F5EF"
+    return (
+        f'<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;'
+        f'text-transform:uppercase;letter-spacing:.05em;color:#5A5C4F;'
+        f'background:{background};border:1px dashed #C9C4B4;border-radius:4px;'
+        f'padding:6px 10px;margin-top:18px;">'
+        f'Article run {run_no} &middot; {note}'
+        f'<div style="text-transform:none;letter-spacing:0;font-style:italic;'
+        f'margin-top:4px;">&ldquo;{article_snippet}&rdquo;</div>'
+        f'</div>'
+    )
+
+
 def _build_passage_card(label: str, passage: dict) -> widgets.VBox:
     """One comment card: label, consensus badge (yes/no/maybe) + motivation, a
     quote preview, and that passage's persona accordion. The same card is used
@@ -281,6 +305,8 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
     session_passages = []
     passage_counter = [0]
     custom_counter = [0]
+    run_counter = [0]
+    run_headers = []  # (run_no, article_snippet, header_widget) - see _run_header_html
 
     def add_card(label, passage, source):
         card = _build_passage_card(label, passage)
@@ -305,15 +331,36 @@ def build_interface(backend, model_options=None) -> widgets.Widget:
                 max_passages=max_passages_slider.value,
                 model=model_box.value,
             )
-            article_widget.value = render_article_marks_html(article_box.value.strip(), result["passages"])
+            article_text = article_box.value.strip()
+            article_widget.value = render_article_marks_html(article_text, result["passages"])
             run_status_output.clear_output()
-            print(f"Found {len(result['passages'])} passage(s). Comments appear beside the article, on the right.")
+            n_found = len(result["passages"])
+            if n_found:
+                print(f"Found {n_found} passage(s). Comments appear beside the article, on the right.")
+            else:
+                print(
+                    "No passages selected - Claude didn't find anything in this text that engages "
+                    "the Runaway frame. You can still add a passage by hand below."
+                )
             if show_raw_checkbox.value:
                 print("\n--- raw passage-selection output ---\n")
                 print(result["selection_raw"])
-            for passage in result["passages"]:
-                passage_counter[0] += 1
-                add_card(f"Passage {passage_counter[0]}", passage, "article")
+
+            if n_found:
+                # Mark which run these cards belong to: re-running replaces the
+                # article on the left but keeps earlier cards (deleting them
+                # would throw away work), so each group is labelled instead.
+                run_counter[0] += 1
+                snippet = article_text if len(article_text) <= 90 else article_text[:87] + "..."
+                header = widgets.HTML(_run_header_html(run_counter[0], snippet, True))
+                run_headers.append((run_counter[0], snippet, header))
+                for run_no, run_snippet, run_header in run_headers[:-1]:
+                    run_header.value = _run_header_html(run_no, run_snippet, False)
+                comments_column.children = comments_column.children + (header,)
+
+                for passage in result["passages"]:
+                    passage_counter[0] += 1
+                    add_card(f"Passage {passage_counter[0]}", passage, "article")
 
     def on_custom_run_clicked(_):
         text = custom_passage_box.value.strip()
