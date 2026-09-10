@@ -1,5 +1,7 @@
 # diailectics
 
+Diailectics experiments with Claude
+
 A persona-based Claude chat interface for the Gamson & Modigliani "Runaway"
 frame-annotation exercise. Paste a newspaper article; Claude selects the
 passages worth annotating against the coding schema, then four personas —
