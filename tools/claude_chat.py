@@ -108,10 +108,14 @@ def _make_client() -> anthropic.Anthropic:
 
 
 DEFAULT_MODEL = "claude-opus-5"
-# Persona responses are meant to be one short paragraph (see OUTPUT_FORMAT_INSTRUCTIONS) -
-# this is a generous backstop, not a target. select_important_passages() needs more room
-# since it emits several passage blocks, so it keeps its own higher default.
-PERSONA_MAX_TOKENS = 1024
+# Persona responses are meant to be ~60 words (see OUTPUT_FORMAT_INSTRUCTIONS) -
+# this cap is generous headroom for adaptive thinking, not a length target.
+# Thinking tokens count against max_tokens and their depth varies per call, so
+# a tight cap here doesn't shorten the visible text (thinking isn't shown) - it
+# only risks truncating mid-response (see _create_persona_message's retry).
+# select_important_passages() needs more room since it emits several passage
+# blocks, so it keeps its own higher default.
+PERSONA_MAX_TOKENS = 1536
 DEFAULT_RESEARCH_QUESTION = (
     "Does this passage draw on Gamson & Modigliani's 'Runaway' interpretive package "
     "(nuclear technology as a force that has slipped, or is at constant risk of "
@@ -125,6 +129,7 @@ PAPER_RAISED = "#F7F5EF"
 INK = "#24261F"
 INK_SOFT = "#5A5C4F"
 RULE = "#C9C4B4"
+AMBER = "#9C6B2E"  # used for a "maybe" / split-verdict consensus, see passage_consensus()
 
 PERSONA_META = {
     "devils_advocate": {"title": "Devil's Advocate", "color": "#8B3A3A"},
@@ -159,32 +164,39 @@ TASK_LINES = {
 
 OUTPUT_FORMAT_INSTRUCTIONS = """
 OUTPUT FORMAT (follow exactly - no HTML, no Markdown, no other tags):
-Keep your entire response to about one paragraph - this is a compact annotation
-aid, not an essay. Do not pad length; brevity is part of the task. Use only these
-tags, never nested:
-- <point>...</point> - exactly one. A single paragraph (roughly 2-4 sentences)
-  carrying your entire argument.
+Hard budget: 60 words total across every tag combined, excluding the quote if
+you include one. This is a compact annotation aid, not an essay - if you find
+yourself writing a second sentence for <point> or reaching for "and", "but
+also", or a semicolon to add another clause, cut it instead. One idea per
+sentence. Use only these tags, never nested:
+- <summary>...</summary> - exactly one, first. One short sentence (max ~15
+  words) that must be understandable entirely on its own, without anyone reading
+  anything else you write: state your principal position on this passage in
+  plain terms. This is what appears in a collapsed preview before your full
+  response is opened, so it cannot assume the reader has any other context.
+- <point>...</point> - exactly one sentence, carrying your single strongest
+  argument (beyond what <summary> already said - do not just repeat it).
 - <quote>...</quote> - at most one, and optional: include it only if a short
   verbatim excerpt from the document text (original language) meaningfully
-  strengthens your point.
+  strengthens your point. Not counted against the 60-word budget.
 - <stance>yes</stance> or <stance>no</stance> - exactly one. This is a structured data
   field for the interface (rendered as a badge), not a recommendation to the
   annotator: state how your own reasoning above would classify this passage on the
   Runaway frame. It does not override any rule above about not telling the annotator
   what to conclude - it labels your argument, it does not instruct them.
-- <conclusion>...</conclusion> - exactly one, a single sentence, containing
-  whatever your role's rules above require as a closing statement (a final
-  counter-claim, a confirm/tension statement, a proposed adjustment, or a stated
-  tension - never a verdict you have been told is not yours to give).
-Order: one <point>, then optionally one <quote>, then exactly one <stance> tag,
-then exactly one <conclusion> tag. No text outside these tags.
+- <conclusion>...</conclusion> - exactly one short sentence, containing whatever
+  your role's rules above require as a closing statement (a final counter-claim,
+  a confirm/tension statement, a proposed adjustment, or a stated tension - never
+  a verdict you have been told is not yours to give).
+Order: <summary>, then <point>, then optionally <quote>, then <stance>, then
+<conclusion>. No text outside these tags.
 
 If the annotator replies to your response, stay in this same persona role (do not
-become a generic assistant) and answer using this same tag format - still about
-one paragraph, not a rebuttal essay.
+become a generic assistant) and answer using this same tag format and the same
+60-word budget - still short, not a rebuttal essay.
 """.strip()
 
-_OPEN_TAG_RE = re.compile(r"<(point|quote|stance|conclusion)>", re.IGNORECASE)
+_OPEN_TAG_RE = re.compile(r"<(summary|point|quote|stance|conclusion)>", re.IGNORECASE)
 _MEMORY_BRACKET_RE = re.compile(r"\[MEMORY MODE ONLY:.*?\]", re.DOTALL | re.IGNORECASE)
 _STATELESS_BRACKET_RE = re.compile(r"\[STATELESS MODE ONLY:\s*(.*?)\]", re.DOTALL | re.IGNORECASE)
 _BLANK_LINES_RE = re.compile(r"\n{3,}")
@@ -298,8 +310,50 @@ def extract_stance(raw_text: str):
     return None
 
 
+# Shared across the passage badge and the article-highlight color, so "how much
+# the personas agree" reads as the same color everywhere: green (yes) and red
+# (no) match the existing per-persona stance badges; amber flags a split.
+CONSENSUS_COLORS = {"yes": "#4A7A6B", "no": "#8B3A3A", "maybe": AMBER}
+
+
+def passage_consensus(persona_results: dict):
+    """Combine every persona's <stance> on one passage into a single label -
+    'yes' if they all read it as Runaway, 'no' if they all read it as not, or
+    'maybe' if they split - plus a short motivation naming who said what. This
+    is the "how much do the personas overlap" signal, computed from what they
+    actually concluded rather than the single up-front provisional guess.
+
+    Returns (label, motivation, color).
+    """
+    stances = {}
+    for key, pdata in persona_results.items():
+        stance = extract_stance(pdata["raw_text"])
+        if stance is not None:
+            stances[key] = stance
+
+    def names(keys):
+        return ", ".join(PERSONA_META[k]["title"] for k in keys)
+
+    if not stances:
+        label = "maybe"
+        motivation = "No persona gave a clear yes/no stance."
+    else:
+        yes_keys = [k for k, v in stances.items() if v]
+        no_keys = [k for k, v in stances.items() if not v]
+        if not no_keys:
+            label = "yes"
+            motivation = f"All {len(yes_keys)} persona(s) agree: {names(yes_keys)}."
+        elif not yes_keys:
+            label = "no"
+            motivation = f"All {len(no_keys)} persona(s) agree: {names(no_keys)}."
+        else:
+            label = "maybe"
+            motivation = f"Split - yes: {names(yes_keys)}; no: {names(no_keys)}."
+    return label, motivation, CONSENSUS_COLORS[label]
+
+
 def _stance_badge_html(stance: bool) -> str:
-    badge_color = "#4A7A6B" if stance else "#8B3A3A"
+    badge_color = CONSENSUS_COLORS["yes"] if stance else CONSENSUS_COLORS["no"]
     badge_text = "Runaway: yes" if stance else "Runaway: no"
     return (
         f'<span style="display:inline-block;font-size:10.5px;'
@@ -324,6 +378,8 @@ def render_persona_body(raw_text: str, color: str) -> str:
         if tag == "stance":
             stance_html = _stance_badge_html(content.strip().lower().startswith("y"))
             continue
+        if tag == "summary":
+            continue  # shown separately (accordion title, passage badge) - not repeated in the body
         escaped = html_lib.escape(content).replace("\n", "<br>")
         if tag == "quote":
             parts.append(
@@ -342,17 +398,22 @@ def render_persona_body(raw_text: str, color: str) -> str:
     return f"{stance_html}{body}" if stance_html else body
 
 
-def one_sentence_summary(raw_text: str, max_len: int = 160) -> str:
-    """A short summary for a persona's response, pulled from its <conclusion> tag
-    (that tag is already defined as the persona's required closing statement)."""
+def one_sentence_summary(raw_text: str, max_len: int = 140) -> str:
+    """A short, standalone summary of the persona's principal position on this
+    passage - prefers the model's own explicit <summary> tag (written to stand
+    alone with no other context); falls back to the first sentence of
+    <conclusion> if the model didn't include one."""
     nodes = parse_tagged_output(raw_text)
-    conclusion = next((content for tag, content in nodes if tag == "conclusion"), None)
-    source = " ".join((conclusion or raw_text).split())
-    match = _SENTENCE_END_RE.match(source)
-    sentence = match.group(1) if match else source
-    if len(sentence) > max_len:
-        sentence = sentence[: max_len - 1].rstrip() + "…"
-    return sentence
+    summary = next((content for tag, content in nodes if tag == "summary"), None)
+    if summary is None:
+        conclusion = next((content for tag, content in nodes if tag == "conclusion"), None)
+        source = " ".join((conclusion or raw_text).split())
+        match = _SENTENCE_END_RE.match(source)
+        summary = match.group(1) if match else source
+    summary = " ".join(summary.split())
+    if len(summary) > max_len:
+        summary = summary[: max_len - 1].rstrip() + "…"
+    return summary
 
 
 def render_html(persona_key: str, raw_text: str) -> str:
@@ -427,6 +488,8 @@ def serialize_passage(passage: dict) -> dict:
         "quote": passage["quote"],
         "contains_runaway": passage["contains_runaway"],
         "justification": passage.get("justification", ""),
+        "initial_consensus_label": passage.get("initial_consensus_label"),
+        "initial_consensus_motivation": passage.get("initial_consensus_motivation"),
         "personas": serialized_personas,
     }
 
@@ -475,6 +538,38 @@ def build_messages(
     return system, user
 
 
+def _create_persona_message(client: anthropic.Anthropic, model: str, system: str, messages: list, max_tokens: int):
+    """One Messages API call for a persona turn, with a safety-net retry.
+
+    Adaptive thinking's depth varies per call, and thinking tokens count
+    against max_tokens - a harder call can exhaust the budget mid-response,
+    either before any visible text at all, or partway through it (a response
+    literally cut off mid-tag, e.g. "<stance>y"). Observed live: both forms
+    happened in the same batch of four persona calls. Either way,
+    stop_reason == "max_tokens" means what came back is not the complete
+    response - silently showing a truncated or empty answer would be the
+    opposite of transparent, so retry once with a much larger budget rather
+    than let either case through.
+    """
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        thinking={"type": "adaptive"},
+        messages=messages,
+    )
+    if response.stop_reason == "max_tokens":
+        response = client.messages.create(
+            model=model,
+            max_tokens=max(max_tokens * 3, 4096),
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            thinking={"type": "adaptive"},
+            messages=messages,
+        )
+    raw_text = "".join(block.text for block in response.content if block.type == "text")
+    return raw_text, response.usage
+
+
 class PersonaConversation:
     """One persona's ongoing exchange about one passage. Starts stateless (a
     single call, per persona_test_prompts.md's "[STATELESS MODE ONLY: ...]"
@@ -513,18 +608,11 @@ class PersonaConversation:
             {"role": "assistant", "content": self.raw_text},
             {"role": "user", "content": user_text},
         ]
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            system=[{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}],
-            thinking={"type": "adaptive"},
-            messages=self.messages,
-        )
-        raw_text = "".join(block.text for block in response.content if block.type == "text")
+        raw_text, usage = _create_persona_message(self.client, self.model, self.system, self.messages, max_tokens)
         self.raw_text = raw_text
         self.replies.append(user_text)
         self.history.append(raw_text)
-        self.usages.append(response.usage)
+        self.usages.append(usage)
         return raw_text
 
 
@@ -544,17 +632,9 @@ def start_persona_conversation(
     system, user = build_messages(
         personas, schema, text, persona_key, contains_runaway, research_question, annotation_text
     )
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-        thinking={"type": "adaptive"},
-        messages=[{"role": "user", "content": user}],
-    )
-    raw_text = "".join(block.text for block in response.content if block.type == "text")
-    return PersonaConversation(
-        client, model, system, [{"role": "user", "content": user}], persona_key, raw_text, response.usage
-    )
+    messages = [{"role": "user", "content": user}]
+    raw_text, usage = _create_persona_message(client, model, system, messages, max_tokens)
+    return PersonaConversation(client, model, system, messages, persona_key, raw_text, usage)
 
 
 # --- Whole-article passage selection ---------------------------------------
@@ -690,16 +770,38 @@ def _persona_hover_item(persona_key: str, raw_text: str) -> str:
 </details>"""
 
 
+# Soft tints of CONSENSUS_COLORS for the article's inline highlight background -
+# the solid badge colors are too strong to sit behind readable body text.
+CONSENSUS_HIGHLIGHT_BG = {"yes": "#DCEEE4", "no": "#F5DCDC", "maybe": "#FCE8B2"}
+
+
+def _passage_badge(passage: dict):
+    """(color, text, motivation) for a passage's consensus badge, falling back
+    to the single provisional annotation if consensus wasn't computed (e.g. a
+    passage dict built by hand rather than via _run_personas_on_passage)."""
+    if "initial_consensus_label" in passage:
+        return (
+            passage["initial_consensus_color"],
+            f"Runaway: {passage['initial_consensus_label']}",
+            passage["initial_consensus_motivation"],
+        )
+    fallback_label = "yes" if passage["contains_runaway"] else "no"
+    return (
+        CONSENSUS_COLORS[fallback_label],
+        f"Runaway: {fallback_label}",
+        passage.get("justification", ""),
+    )
+
+
 def _passage_panel_html(idx: int, passage: dict) -> str:
-    badge_color = "#4A7A6B" if passage["contains_runaway"] else "#8B3A3A"
-    badge_text = "Runaway: yes" if passage["contains_runaway"] else "Runaway: no"
-    justification_escaped = html_lib.escape(passage.get("justification", ""))
+    badge_color, badge_text, motivation = _passage_badge(passage)
+    motivation_escaped = html_lib.escape(motivation)
     persona_items = "\n".join(
         _persona_hover_item(key, p["raw_text"]) for key, p in passage.get("personas", {}).items()
     )
     return f"""<div class="rw-panel" role="tooltip">
   <div class="rw-panel-header">Passage {idx} &middot; <span style="color:{badge_color};">{badge_text}</span></div>
-  <div class="rw-panel-justification">{justification_escaped}</div>
+  <div class="rw-panel-justification">{motivation_escaped}</div>
   {persona_items}
 </div>"""
 
@@ -707,14 +809,19 @@ def _passage_panel_html(idx: int, passage: dict) -> str:
 def render_article_marks_html(article_text: str, passages: list) -> str:
     """Article text with important passages highlighted (index-labelled), no
     popovers - a lightweight static preview to display above the interactive,
-    reply-capable per-passage/persona widgets (see interface.ipynb)."""
+    reply-capable per-passage/persona widgets (see interface.ipynb). The
+    highlight color reflects how much the personas' stances overlap: green/red
+    for a unanimous yes/no, amber for a split verdict."""
     escaped_article = html_lib.escape(article_text).replace("\n", "<br>")
     for idx, passage in enumerate(passages, start=1):
         quote_escaped = html_lib.escape(passage["quote"]).replace("\n", "<br>")
         if quote_escaped and quote_escaped in escaped_article:
+            badge_color, _, _ = _passage_badge(passage)
+            label = passage.get("initial_consensus_label", "yes" if passage["contains_runaway"] else "no")
+            highlight_bg = CONSENSUS_HIGHLIGHT_BG[label]
             marker = (
-                f'<mark style="background:#FCE8B2;padding:1px 2px;border-radius:2px;">'
-                f'{quote_escaped}<sup style="color:#9C6B2E;">[{idx}]</sup></mark>'
+                f'<mark style="background:{highlight_bg};padding:1px 2px;border-radius:2px;">'
+                f'{quote_escaped}<sup style="color:{badge_color};">[{idx}]</sup></mark>'
             )
             escaped_article = escaped_article.replace(quote_escaped, marker, 1)
     return (
@@ -811,11 +918,17 @@ def _run_personas_on_passage(
             "usage": conversation.usages[-1],
             "conversation": conversation,
         }
+    initial_consensus_label, initial_consensus_motivation, initial_consensus_color = passage_consensus(persona_results)
     return {
         "quote": quote,
         "contains_runaway": contains_runaway,
         "justification": justification,
         "personas": persona_results,
+        # How much the personas' own <stance> tags agree, computed after they've
+        # actually responded - not the single up-front provisional guess above.
+        "initial_consensus_label": initial_consensus_label,          # "yes" | "no" | "maybe"
+        "initial_consensus_motivation": initial_consensus_motivation,
+        "initial_consensus_color": initial_consensus_color,
     }
 
 
